@@ -1,17 +1,24 @@
 <template>
   <div class="recognizer-container">
     <h1>ASL Gesture Recognizer</h1>
-    <div v-if="loading" class="loading">Loading Model & Starting Webcam...</div>
+
+    <div v-if="!isReady" class="status-box">
+      <div v-if="!isModelLoaded">Loading Hand Landmark model...</div>
+      <div v-if="isModelLoaded && !isWebcamReady">
+        Please allow camera access.
+      </div>
+    </div>
     <div v-if="!cameraSupported" class="error">
       Your browser does not support camera access.
     </div>
-    <div class="video-container" :style="{ opacity: loading ? 0 : 1 }">
+
+    <div class="video-container" :style="{ opacity: isReady ? 1 : 0 }">
       <video
         ref="video"
         class="video-feed"
         autoplay
         playsinline
-        @loadeddata="onVideoLoaded"
+        @canplay="handleWebcamReady"
       ></video>
       <canvas ref="canvas" class="overlay-canvas"></canvas>
     </div>
@@ -24,8 +31,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from "vue";
-// *** FIX: Import HandLandmarker directly from the library ***
+import { ref, onMounted, onUnmounted, watchEffect, computed } from "vue";
 import { HandLandmarker } from "@mediapipe/tasks-vision";
 import {
   createHandLandmarker,
@@ -33,15 +39,36 @@ import {
 } from "../services/handGestureService";
 import { recognizeGesture } from "../services/gestureClassifer";
 
+// --- Reactive State ---
 const video = ref(null);
 const canvas = ref(null);
-const loading = ref(true);
 const recognizedGesture = ref(null);
 const cameraSupported = ref(true);
 
-let lastVideoTime = -1;
+// NEW: Robust state flags for managing async loading
+const isModelLoaded = ref(false);
+const isWebcamReady = ref(false);
+
+// A computed property to determine if the main app is ready
+const isReady = computed(() => isModelLoaded.value && isWebcamReady.value);
+
 let animationFrameId = null;
 
+// --- Core Logic ---
+
+// 1. Initialize the HandLandmarker model
+const initModel = async () => {
+  try {
+    await createHandLandmarker();
+    isModelLoaded.value = true;
+    console.log("HandLandmarker model is loaded.");
+  } catch (e) {
+    console.error("Failed to load model:", e);
+    alert("Failed to load the recognition model. Please check the console.");
+  }
+};
+
+// 2. Start the webcam
 const startWebcam = async () => {
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     try {
@@ -50,9 +77,9 @@ const startWebcam = async () => {
       });
       video.value.srcObject = stream;
     } catch (error) {
-      console.error("Error accessing webcam: ", error);
+      console.error("Error accessing webcam:", error);
       alert(
-        "Could not access webcam. Please allow camera permissions and refresh the page.",
+        "Could not access webcam. Please allow camera permissions and refresh.",
       );
     }
   } else {
@@ -60,23 +87,32 @@ const startWebcam = async () => {
   }
 };
 
-const loop = async () => {
-  if (video.value && video.value.readyState >= 3) {
-    const results = detectHands(video.value, lastVideoTime);
-    lastVideoTime = video.value.currentTime;
+// 3. This function is called by the video element's @canplay event
+const handleWebcamReady = () => {
+  console.log("Webcam is ready.");
+  isWebcamReady.value = true;
+};
 
+// 4. The main detection loop
+const loop = async () => {
+  if (video.value && canvas.value) {
+    // Set canvas dimensions once
+    if (canvas.value.width !== video.value.videoWidth) {
+      canvas.value.width = video.value.videoWidth;
+      canvas.value.height = video.value.videoHeight;
+    }
+
+    const results = detectHands(video.value); // lastVideoTime is handled inside the service in this simplified version
     const ctx = canvas.value.getContext("2d");
     ctx.clearRect(0, 0, canvas.value.width, canvas.value.height);
 
     if (results && results.landmarks) {
       for (const landmarks of results.landmarks) {
-        // *** FIX: Use the imported HandLandmarker object directly ***
         drawConnectors(ctx, landmarks, HandLandmarker.HAND_CONNECTIONS, {
           color: "#00FF00",
           lineWidth: 5,
         });
         drawLandmarks(ctx, landmarks, { color: "#FF0000", lineWidth: 2 });
-
         const gesture = recognizeGesture(landmarks);
         recognizedGesture.value = gesture;
       }
@@ -85,28 +121,26 @@ const loop = async () => {
   animationFrameId = requestAnimationFrame(loop);
 };
 
-const onVideoLoaded = () => {
-  canvas.value.width = video.value.videoWidth;
-  canvas.value.height = video.value.videoHeight;
-  loop(); // Start the detection loop only after video is loaded
-};
+// --- Lifecycle Hooks ---
 
-onMounted(async () => {
-  try {
-    await createHandLandmarker();
-    await startWebcam();
-  } catch (e) {
-    console.error("Initialization failed:", e);
-    alert("Failed to initialize. Please check the console for details.");
-  } finally {
-    loading.value = false;
-  }
+onMounted(() => {
+  initModel();
+  startWebcam();
 });
 
 onUnmounted(() => {
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
   if (video.value && video.value.srcObject) {
     video.value.srcObject.getTracks().forEach((track) => track.stop());
+  }
+});
+
+// NEW: This `watchEffect` is the key to the robust startup.
+// It will only run the `loop()` function when `isReady` becomes true.
+watchEffect(() => {
+  if (isReady.value) {
+    console.log("Model and Webcam are ready. Starting detection loop.");
+    loop();
   }
 });
 
@@ -145,6 +179,7 @@ function drawLandmarks(ctx, landmarks, style) {
 </script>
 
 <style scoped>
+/* Styles are the same as before */
 .recognizer-container {
   display: flex;
   flex-direction: column;
@@ -152,11 +187,15 @@ function drawLandmarks(ctx, landmarks, style) {
   font-family: sans-serif;
   padding: 20px;
 }
-.loading,
+.status-box,
 .error {
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   margin-top: 50px;
   color: #555;
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
 }
 .video-container {
   position: relative;
@@ -170,7 +209,7 @@ function drawLandmarks(ctx, landmarks, style) {
 .video-feed {
   width: 100%;
   height: 100%;
-  transform: scaleX(-1); /* Mirror effect */
+  transform: scaleX(-1);
 }
 .overlay-canvas {
   position: absolute;
@@ -178,7 +217,7 @@ function drawLandmarks(ctx, landmarks, style) {
   left: 0;
   width: 100%;
   height: 100%;
-  transform: scaleX(-1); /* Match the video flip */
+  transform: scaleX(-1);
 }
 .gesture-output {
   margin-top: 25px;
