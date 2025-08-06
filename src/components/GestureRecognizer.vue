@@ -39,19 +39,14 @@ import {
 } from "../services/handGestureService";
 import { recognizeGesture } from "../services/gestureClassifer";
 
-// --- Reactive State ---
+// --- Reactive State (No changes here) ---
 const video = ref(null);
 const canvas = ref(null);
 const recognizedGesture = ref(null);
 const cameraSupported = ref(true);
-
-// NEW: Robust state flags for managing async loading
 const isModelLoaded = ref(false);
 const isWebcamReady = ref(false);
-
-// A computed property to determine if the main app is ready
 const isReady = computed(() => isModelLoaded.value && isWebcamReady.value);
-
 let animationFrameId = null;
 
 // --- Core Logic ---
@@ -179,64 +174,113 @@ function drawLandmarks(ctx, landmarks, style) {
 </script>
 
 <style scoped>
-/* Styles are the same as before */
+/* --- Base & Mobile-First Styles --- */
 .recognizer-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  font-family: sans-serif;
-  padding: 20px;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  padding: 1rem;
+  width: 100%;
+  max-width: 1200px; /* Max width for very large screens */
+  margin: 0 auto;
+  box-sizing: border-box;
 }
+
+/* Fluid Typography using clamp(MIN, PREFERRED, MAX) */
+h1 {
+  /* Font size will be 4.5vw, but won't go below 1.5rem or above 2.5rem */
+  font-size: clamp(1.5rem, 4.5vw, 2.5rem);
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
 .status-box,
 .error {
-  font-size: 1.2rem;
-  margin-top: 50px;
+  font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+  margin-top: 2rem;
   color: #555;
   background-color: #f8f9fa;
-  padding: 20px;
+  padding: 1rem;
   border-radius: 8px;
   border: 1px solid #dee2e6;
+  text-align: center;
 }
+
+/* --- THE CORE RESPONSIVE VIDEO TRICK --- */
 .video-container {
   position: relative;
-  width: 640px;
-  height: 480px;
+  width: 100%;
+  max-width: 640px; /* Max width on larger screens */
+  margin: 0 auto; /* Center the container */
+
+  /* Aspect Ratio Box: 4:3 Aspect Ratio (480 / 640 = 0.75) */
+  height: 0;
+  padding-top: 75%;
+
   border: 3px solid #007bff;
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background-color: #000;
 }
-.video-feed {
-  width: 100%;
-  height: 100%;
-  transform: scaleX(-1);
-}
+
+.video-feed,
 .overlay-canvas {
+  /* Position both video and canvas to fill the aspect-ratio box */
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  transform: scaleX(-1);
+  transform: scaleX(-1); /* Mirror effect */
 }
+
 .gesture-output {
-  margin-top: 25px;
-  padding: 15px 30px;
+  margin-top: 1.5rem;
+  padding: 1rem 1.5rem;
   border-radius: 10px;
   background-color: #f0f8ff;
   border: 1px solid #cce5ff;
 }
+
 .gesture-output h2 {
   margin: 0;
-  font-size: 1.8rem;
+  font-size: clamp(1.2rem, 4vw, 1.8rem);
   color: #333;
+  text-align: center;
 }
+
 .gesture-output span {
   color: #007bff;
   font-weight: bold;
-  font-size: 2rem;
+  font-size: clamp(1.5rem, 5vw, 2.2rem);
   min-width: 50px;
   display: inline-block;
   text-align: center;
+}
+
+/* --- Media Queries for Larger Screens (Tablets and Desktops) --- */
+
+/* For tablets and larger devices */
+@media (min-width: 768px) {
+  .recognizer-container {
+    padding: 2rem;
+  }
+
+  .video-container {
+    /* Allow the video to be a bit larger on tablets */
+    max-width: 700px;
+  }
+}
+
+/* For desktops */
+@media (min-width: 1024px) {
+  .video-container {
+    /* On desktops, we can cap it at a larger size */
+    max-width: 800px;
+  }
 }
 </style>
