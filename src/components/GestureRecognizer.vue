@@ -36,8 +36,8 @@ import { HandLandmarker } from "@mediapipe/tasks-vision";
 import {
   createHandLandmarker,
   detectHands,
-} from "../services/handGestureService";
-import { recognizeGesture } from "../services/gestureClassifer";
+} from "@/services/handGestureService";
+import { recognizeGesture } from "@/services/gestureClassifier";
 
 // --- Reactive State (No changes here) ---
 const video = ref(null);
